@@ -1,0 +1,356 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message",
+          "edited_message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "d6d3bc9f-4d2d-421a-b878-7dccace090db",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -160,
+        0
+      ],
+      "webhookId": "b162fcf2-1787-42d7-b6e2-8f5dc986b6e1",
+      "credentials": {
+        "telegramApi": {
+          "id": "p0h7OO1vTVMOSCzE",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "5a90a011-dd9d-4bba-8ec3-c9de01d46445",
+              "name": "message.text",
+              "value": "={{ $json.message.text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c6b140f8-2f3f-4397-ba06-eb0662c3c9ae",
+      "name": "Mesaj Verilerini Ayarla",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        368,
+        304
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "GPT-4O"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ $json.message.text }}"
+            },
+            {
+              "content": "Sen bir içerik moderasyon asistanısın. Kullanıcının mesajını analiz et ve aşağıdaki kategorilerden herhangi birini içeriyorsa tespit et:\n\n1. Küfür veya hakaret\n2. Fraud/dolandırıcılık girişimi\n3. Para isteme\n4. Cinsiyetçi içerik\n5. Irkçı içerik\n6. Body shaming (vücut ayrımcılığı)\n\nCevabını JSON formatında ver:\n{\n  \"is_inappropriate\": true/false,\n  \"categories\": [tespit edilen kategoriler],\n  \"severity\": \"low\"/\"medium\"/\"high\",\n  \"reason\": \"Kısa açıklama\"\n}\n\nEğer içerik uygunsa, normal bir yanıt da ekle:\n{\n  \"is_inappropriate\": false,\n  \"response\": \"Kullanıcıya verilecek yanıt\"\n}"
+            }
+          ]
+        },
+        "simplify": false,
+        "jsonOutput": true,
+        "options": {}
+      },
+      "id": "cf871fb2-c6b5-4bf4-9039-4867acccb14b",
+      "name": "İçerik Analizi",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.5,
+      "position": [
+        416,
+        64
+      ],
+      "retryOnFail": false,
+      "notesInFlow": false,
+      "alwaysOutputData": false,
+      "credentials": {
+        "openAiApi": {
+          "id": "YO5TrBxBZIcWslml",
+          "name": "OpenAi account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// OpenAI yanıtını al - content zaten bir object!\nconst aiResponse = $input.first().json;\nlet moderationResult;\n\ntry {\n  // Content direkt object olarak geliyor, parse etmeye gerek yok!\n  if (aiResponse.choices && aiResponse.choices[0] && aiResponse.choices[0].message) {\n    moderationResult = aiResponse.choices[0].message.content;\n    \n    // Eğer content string olarak gelirse (bazı durumlarda), o zaman parse et\n    if (typeof moderationResult === 'string') {\n      moderationResult = JSON.parse(moderationResult);\n    }\n  } else {\n    // Hata durumunda varsayılan değer\n    console.error('Unexpected AI response structure:', JSON.stringify(aiResponse));\n    moderationResult = {\n      is_inappropriate: false,\n      response: \"Üzgünüm, mesajınızı şu anda kontrol edemiyorum. Lütfen daha sonra tekrar deneyin.\",\n      confidence: 0\n    };\n  }\n} catch (error) {\n  // Parse hatası durumunda\n  console.error('Processing error:', error);\n  console.error('AI Response:', JSON.stringify(aiResponse));\n  \n  moderationResult = {\n    is_inappropriate: false,\n    response: \"Teknik bir sorun oluştu. Lütfen daha sonra tekrar deneyin.\",\n    confidence: 0\n  };\n}\n\n// Kullanıcı verilerini al\nconst userData = $('Mesaj Verilerini Ayarla').first().json;\n\n// Log kayıt için veri hazırla\nconst logData = {\n  timestamp: new Date().toISOString(),\n  userId: userData.userId,\n  userName: userData.userName || '',\n  platform: userData.platform,\n  message: userData.message,\n  messageId: userData.messageId || '',\n  chatId: userData.chatId,\n  moderationResult: moderationResult,\n  action: moderationResult.is_inappropriate ? 'blocked' : 'allowed',\n  confidence: moderationResult.confidence || 1\n};\n\n// Yanıt mesajını hazırla\nlet responseMessage = '';\n\nif (moderationResult.is_inappropriate) {\n  switch(moderationResult.severity) {\n    case 'high':\n      responseMessage = '⛔ Mesajınız uygunsuz içerik tespit edildiği için engellenmiştir. Bu tür davranışların devamı durumunda hesabınız askıya alınabilir.';\n      break;\n    case 'medium':\n      responseMessage = '⚠️ Mesajınız uygun bulunmamıştır. Lütfen topluluk kurallarına uygun şekilde iletişim kurun.';\n      break;\n    case 'low':\n      responseMessage = '📝 Mesajınızda uygunsuz içerik tespit edildi. Lütfen daha dikkatli olun.';\n      break;\n    default:\n      // Severity belirtilmemişse varsayılan mesaj\n      responseMessage = '❌ Mesajınız uygunsuz içerik içeriyor.';\n  }\n} else {\n  responseMessage = moderationResult.response || 'Merhaba! Size nasıl yardımcı olabilirim?';\n}\n\n// Telegram için mesaj silme kararı (sadece high severity için)\nconst shouldDeleteMessage = moderationResult.is_inappropriate && \n                          moderationResult.severity === 'high' && \n                          userData.platform === 'telegram' &&\n                          userData.messageId;\n\n// Debug log (isteğe bağlı)\nconsole.log('Moderation completed:', {\n  user: userData.userId,\n  inappropriate: moderationResult.is_inappropriate,\n  severity: moderationResult.severity || 'none',\n  categories: moderationResult.categories || []\n});\n\n// Tüm verileri döndür\nreturn {\n  ...userData,\n  moderationResult,\n  responseMessage,\n  logData,\n  shouldBlock: moderationResult.is_inappropriate || false,\n  shouldDeleteMessage,\n  errorOccurred: false\n};"
+      },
+      "id": "923c97a2-ec0e-4f2b-a53d-53d6eadeacca",
+      "name": "Moderasyon İşleme",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        288
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "blocked-path",
+              "leftValue": "={{ $json.shouldBlock }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d7d6f98e-f18d-4115-a25c-efd5d10dc215",
+      "name": "Uygunsuz mu?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        832,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "8034834629",
+        "text": "={{ $json.responseMessage }}",
+        "additionalFields": {}
+      },
+      "id": "b5711296-d0b1-483d-ac4e-d543ab5b1d69",
+      "name": "Telegram Yanıt",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1040,
+        192
+      ],
+      "webhookId": "9d309638-59d5-409a-abee-356bde639fc4",
+      "credentials": {
+        "telegramApi": {
+          "id": "p0h7OO1vTVMOSCzE",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "database",
+        "databaseId": {
+          "__rl": true,
+          "value": "23a71559-f4fa-808a-ab4c-cef18198428c",
+          "mode": "list",
+          "cachedResultName": "Expenses (Monthly)",
+          "cachedResultUrl": "https://www.notion.so/23a71559f4fa808aab4ccef18198428c"
+        }
+      },
+      "id": "2dc635bf-4466-4497-bb93-7b7754b36176",
+      "name": "Log Kaydet (Notion)",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        1232,
+        288
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "dY6URJDoHJ0Do5vL",
+          "name": "Notion account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "content": "## İçerik Moderasyon Chatbot\n\n### Kurulum Adımları:\n\n1. **Telegram Bot Kurulumu:**\n   - @BotFather'dan yeni bot oluştur\n   - Bot token'ını al\n   - Telegram API credential ekle\n\n2. **OpenAI API Kurulumu:**\n   - OpenAI API anahtarı al\n   - Credential olarak ekle\n\n3. **Notion Veritabanı (Opsiyonel):**\n   - Log tutmak için Notion veritabanı oluştur\n   - Gerekli alanları ekle:\n     - Timestamp (Title)\n     - User ID (Text)\n     - Platform (Select: telegram, web)\n     - Message (Text)\n     - Action (Select: blocked, allowed)\n     - Categories (Multi-select)\n     - Severity (Select: low, medium, high, none)\n\n4. **Webhook URL'leri:**\n   - Telegram: Otomatik\n   - Web: `https://your-n8n-url/webhook/[webhook-id]`",
+        "height": 463.75,
+        "color": 6
+      },
+      "id": "74bc1bfa-ef0a-410f-a3dd-393d3bfe19ae",
+      "name": "Kurulum Notları",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "webhook",
+        "options": {}
+      },
+      "id": "6441fcd6-94a9-499a-80b3-22baa8fc46a0",
+      "name": "Web Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -176,
+        496
+      ],
+      "webhookId": "d5d7c452-f485-4b38-ac8c-161d888b644d"
+    },
+    {
+      "parameters": {
+        "resource": "assistant",
+        "assistantId": {
+          "__rl": true,
+          "value": "asst_9BYL7lX8lswWw2vLKkv84BYG",
+          "mode": "list",
+          "cachedResultName": "eylül"
+        },
+        "prompt": "define",
+        "text": "Sen bir içerik moderasyon asistanısın. Kullanıcının mesajını analiz et ve aşağıdaki kategorilerden herhangi birini içeriyorsa tespit et:\n\n1. Küfür veya hakaret\n2. Fraud/dolandırıcılık girişimi\n3. Para isteme\n4. Cinsiyetçi içerik\n5. Irkçı içerik\n6. Body shaming (vücut ayrımcılığı)\n\nCevabını JSON formatında ver:\n{\n  \"is_inappropriate\": true/false,\n  \"categories\": [tespit edilen kategoriler],\n  \"severity\": \"low\"/\"medium\"/\"high\",\n  \"reason\": \"Kısa açıklama\"\n}\n\nEğer içerik uygunsa, normal bir yanıt da ekle:\n{\n  \"is_inappropriate\": false,\n  \"response\": \"Kullanıcıya verilecek yanıt\"\n}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        352,
+        -176
+      ],
+      "id": "0bcd6522-ab8b-406d-b6f1-5917dc2e6dc5",
+      "name": "Message an assistant",
+      "credentials": {
+        "openAiApi": {
+          "id": "yL3HMrXwWOtc3DBa",
+          "name": "OpenAi account"
+        }
+      },
+      "disabled": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Mesaj Verilerini Ayarla",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mesaj Verilerini Ayarla": {
+      "main": [
+        [
+          {
+            "node": "İçerik Analizi",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Moderasyon İşleme": {
+      "main": [
+        [
+          {
+            "node": "Uygunsuz mu?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Uygunsuz mu?": {
+      "main": [
+        [
+          {
+            "node": "Telegram Yanıt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram Yanıt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Yanıt": {
+      "main": [
+        [
+          {
+            "node": "Log Kaydet (Notion)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "İçerik Analizi": {
+      "main": [
+        [
+          {
+            "node": "Moderasyon İşleme",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Web Webhook": {
+      "main": [
+        [
+          {
+            "node": "Mesaj Verilerini Ayarla",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message an assistant": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "92db2758-f219-496a-adaf-ef3c1f865196",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "9305e850e8f5cb3eb417322fcc54068bec94a097b28feca4da0ddda25af1f787"
+  },
+  "id": "tamj7NIt8jjiJyDo",
+  "tags": []
+}
