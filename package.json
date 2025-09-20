@@ -1,0 +1,17 @@
+{
+  "name": "verinin-mutfagi-website",
+  "version": "1.0.0",
+  "description": "Verinin Mutfağı - Data Analytics and Automation Company Website",
+  "main": "index.html",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": ["data-analytics", "automation", "ai", "chatbot", "verinin-mutfagi"],
+  "author": "Verinin Mutfağı",
+  "license": "MIT",
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}
