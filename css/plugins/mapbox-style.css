@@ -1,0 +1,4 @@
+/* Mapbox GL JS styles */
+.mapboxgl-map{font:12px/20px 'Helvetica Neue',Arial,Helvetica,sans-serif;overflow:hidden;position:relative;-webkit-tap-highlight-color:rgba(0,0,0,0)}
+.mapboxgl-canvas{position:absolute;left:0;top:0}
+.mapboxgl-canvas-container{overflow:hidden;position:absolute;top:0;left:0}
